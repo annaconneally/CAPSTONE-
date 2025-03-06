@@ -1,15 +1,14 @@
-# CAPSTONE-
-Final year undergraduate capstone project 2024/2025
 
-# Step 1: Load Required Libraries & Files
-
-#Set the path to the .robj file
+# =========================================================
+# Step 1: Load Required Libraries and Analyse Seurat Object
+# =========================================================
+# Set the path to the .robj file
 file_path_all_neuron_reads <- "/Users/annaconneally/Desktop/R_datasets/remote_memory_data/all_neuron_reads.Robj"
 file_path_non_neuronal_cells <- "/Users/annaconneally/Desktop/R_datasets/remote_memory_data/TRAP2_non_neuronal_cells.Robj"
 load(file_path_all_neuron_reads)
 load(file_path_non_neuronal_cells)
 
-#Load the file and libraries
+# Load the file and libraries
 library(dplyr)
 library(Seurat)
 library(SeuratData)
@@ -20,78 +19,118 @@ library(clusterProfiler)
 library(org.Mm.eg.db)
 library(AnnotationDbi)
 
-# =====================================
-#  Step 2: Inspect the Seurat Object
-# =====================================
-print(all_para_reads_filt)  # Check object structure
+# Inspect the Seurat Object
+print(all_para_reads_filt)  # object structure
 head(all_para_reads_filt@meta.data)  # View metadata
-# Visualise RNA Counts Across Cell Types
-ggplot(all_para_reads_filt@meta.data, aes(x = celltype, y = nCount_RNA)) +
-  geom_boxplot() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  labs(title = "RNA Counts Across Non-Neuronal Cell Types",
-       x = "Cell Type", 
-       y = "Total RNA Count (nCount_RNA)")
 
-#=====================================
-# STEP: 3 Isolating Microglia 
-#=====================================
-#This creates a seurat object called microglia, filtering from object all_para_reads_filt 
+# Set Cell Type Identities & Isolate Microglia
+Idents(all_para_reads_filt) <- all_para_reads_filt$celltype
+table(Idents(all_para_reads_filt))  # Confirm cell types
+
+#==============================
+#STEP: 2 Isolating Microglia 
+#==============================
+# This creates a seurat object called microglia, filtering from object all_para_reads_filt 
 microglia <- subset(all_para_reads_filt, celltype == "3_Microglia_Il1a+" | celltype == "4_Microglia_Il1a-")
 #removing cells that belong to a sample (orig.ident) with fewer than 3 cells.
 microglia<- subset(microglia, cells = colnames(microglia)[table(microglia$orig.ident)[microglia$orig.ident] >= 3])
 head(microglia)
 
-#normalise - Accounts for differences in sequencing depth between cells.
+# normalise - Accounts for differences in sequencing depth between cells.
 microglia <- NormalizeData(microglia, normalization.method = "LogNormalize", scale.factor = 10000)
 microglia <- FindVariableFeatures(microglia, selection.method = "vst", nfeatures = 2000)
 
-#scale
+# scale
 all.genes <- rownames(microglia)
 microglia<- ScaleData(microglia, features = all.genes)
 microglia[["RNA"]]$scale.data
 
-#top10hvg
+# top10hvg
 microglia_top10_hvgenes <- head(VariableFeatures(microglia), 10)
 plot1<- VariableFeaturePlot(microglia)
 plot2 <- LabelPoints(plot = plot1, points = microglia_top10_hvgenes, repel = TRUE)
 plot1 + plot2
 
-#Visualse QC metrics of microglia
+# Visualse QC metrics of microglia
 microglia[["percent.mt"]] <- PercentageFeatureSet(microglia, pattern = "^mt-")
 VlnPlot(microglia, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
 plot1 <- FeatureScatter(microglia, feature1 = "nCount_RNA", feature2 = "percent.mt")
 plot2 <- FeatureScatter(microglia, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 plot1 + plot2
 
-#PCAanalysis
+# PCAanalysis
 microglia <- RunPCA(microglia, features = VariableFeatures(object = microglia))
-print(microglia[["pca"]], dims = 1:05, nfeatures = 5)
+print(microglia[["pca"]], dims = 1:05, nfeatures = 5) #test different PC's to choose most representative of biological variation
 DimPlot(microglia, reduction = "pca")
 
 #================================================
 # STEP 3 CREATE CLUSTERS & DEFINE CLUSTER MARKERS
 #================================================
-#findclusters
+# findclusters
 microglia <- FindNeighbors(microglia, dims = 1:10)
-microglia<- FindClusters(microglia, resolution = 0.2)
+microglia<- FindClusters(microglia, resolution = 0.5) #test different resolutions to choose optimal 
 microglia <- RunUMAP(microglia, dims = 1:10)
 DimPlot(microglia, reduction = "umap")
 DimPlot(microglia, group.by = "orig.ident")
 
-#Finding differentially expressed features (cluster biomarkers)
+# UMAP colored by sample identity
+DimPlot(microglia, group.by = "orig.ident") +
+  labs(
+    title = "UMAP Projection Colored by Sample Identity",
+    x = "UMAP_1 (Primary Gene Expression Variation)",
+    y = "UMAP_2 (Secondary Gene Expression Variation)",
+    color = "Sample Identity") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.title.x = element_text(face = "bold", size = 12),
+    axis.title.y = element_text(face = "bold", size = 12),
+    legend.title = element_text(face = "bold"),
+    legend.text = element_text(size = 10))
+    
+# Cell Count Analysis 
+#Convert to a data frame for visualisation
+cluster_counts <- table(microglia$seurat_clusters)
+print(cluster_counts)
+cluster_counts_df <- as.data.frame(cluster_counts)
+colnames(cluster_counts_df) <- c("Cluster", "Cell_Count")
+# Calculate summary statistics for total expression counts
+summary_statistics <- summary(rowSums(microglia@assays$RNA@counts))
+print(summary_statistics)
+library(ggplot2)
+# Plot the number of cells in each cluster
+ggplot(cluster_counts_df, aes(x = Cluster, y = Cell_Count, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Cell Count Distribution Across Microglial Clusters",
+       x = "Cluster",
+       y = "Number of Cells")
+# Sum total transcript counts per cell
+cell_counts <- colSums(microglia@assays$RNA@counts)
+# Combine with cluster metadata
+cell_metadata <- data.frame(Cluster = microglia$seurat_clusters, Total_Counts = cell_counts)
+# Compute per-cluster summary statistics
+cluster_summaries <- aggregate(Total_Counts ~ Cluster, data = cell_metadata, summary)
+print(cluster_summaries)
+
+# Find differentially expressed features (cluster biomarkers)
 cluster0.markers<-FindMarkers(microglia, ident.1=0)
 cluster1.markers<-FindMarkers(microglia, ident.1=1)
 cluster2.markers<-FindMarkers(microglia, ident.1=2)
 cluster3.markers<-FindMarkers(microglia, ident.1=3)
 head(cluster0.markers, n = 5)
 
-#find markers for every cluster compared to all remaining cells
+# Find markers for every cluster compared to all remaining cells
 microglia.markers <- FindAllMarkers(microglia, min.pct = .1)
 microglia.markers %>%
   group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-markers<-read.csv("filtered_microglia_markers.csv",stringsAsFactors = FALSE)     
+  dplyr::filter(abs(avg_log2FC) > 0.25) 
+markers<-read.csv("filtered_microglia_markers.csv",stringsAsFactors = FALSE)
+# To retain only statistically significant genes (p_val_adj ≤ 0.05) and save them in a new file (downstream)
+downstream <- microglia.markers %>% 
+  dplyr::filter(p_val_adj <= 0.05)
+# Save for downstream GO analysis
+write.csv(downstream, "downstream_genes.csv", row.names = FALSE)
 
 #========================================================================
 # STEP 4 : LOOPING IN T5 MICE AND GROUPING MICE BY IDENTITY AND CONDITION
@@ -113,142 +152,9 @@ DimPlot(microglia, reduction = "umap", split.by = "condition")
 microglia$seurat_clusters <- Idents(microglia)
 head(microglia@meta.data)
 
-#==============================
-# STEP 5 GENE ONTOLOGY ANALYSIS 
-#==============================
-library(dplyr)
-library(clusterProfiler)
-library(org.Mm.eg.db)   # Use org.Hs.eg.db for human data if needed
-library(ggplot2)
-if (!requireNamespace("enrichplot", quietly = TRUE))
-  BiocManager::install("enrichplot")
-library(enrichplot)
-
-# Step 1: Load and Filter Marker Data
-# Read your CSV file of significant markers (e.g., filtered to have p_val_adj < 0.05 and avg_log2FC > 1)
-markers <- read.csv("filtered_microglia_markers.csv", stringsAsFactors = FALSE) #stringsAsFactors = FALSE ensures that text columns (e.g., gene names) remain as character strings rather than being automatically converted into factors.
-cat("Loaded", nrow(markers), "markers\n") 
-# Print the number of markers loaded
-head(markers)
-
-# Step 2: Perform Enrichment Analysis per Cluster
-clusters <- unique(significant_markers$cluster)
-# Create a list to store enrichment results for each cluster
-enrichment_results <- list()
-
-for (cl in clusters) {
-  # Extract unique gene symbols for the current cluster
-  genes <- significant_markers %>% 
-    filter(cluster == cl) %>% 
-    pull(gene) %>% 
-    unique()
-  
-  # Perform GO enrichment analysis (over-representation analysis) for Biological Process (BP)
-  ego <- enrichGO(
-    gene         = genes,
-    OrgDb        = org.Mm.eg.db,  # Change this if using another organism
-    keyType      = "SYMBOL",
-    ont          = "BP",          # Choose "BP", "MF", "CC", or "ALL" as needed
-    pAdjustMethod= "BH",
-    qvalueCutoff = 0.05,
-    readable     = TRUE
-  )
-  
-  # Store the enrichment result in the list
-  enrichment_results[[paste0("Cluster_", cl)]] <- ego
-  cat("Completed enrichment analysis for Cluster", cl, "\n")
-}
-
-# Step 3: Visualize the Enrichment Results for Each Cluster with Colour Gradients
-# For each cluster’s enrichment result, create a dot plot where:
-# The x-axis shows the GeneRatio,
-# The y-axis shows the GO Term (Description),
-# - The dot size corresponds to the Count (number of genes),
-# - The dot color reflects the significance (-log10(p.adjust)) with a color gradient.
-plots <- list()
-for (cl in names(enrichment_results)) {ego_obj <- enrichment_results[[cl]]
-  
-  # Convert the enrichment result to a data frame
-  df_ego <- as.data.frame(ego_obj)
-  
-  # Skip if there are no enriched terms for this cluster
-  if(nrow(df_ego) == 0) {cat("No enrichment results for", cl, "\n")next}
-  
-  # Select the top 10 GO terms by adjusted p-value (lowest first)
-  df_top10 <- df_ego %>%
-    arrange(p.adjust) %>%
-    head(10) %>%
-    mutate(logP = -log10(p.adjust))
-  
-  # Create a dot plot using ggplot2
-  p <- ggplot(df_top10, aes(x = GeneRatio, y = reorder(Description, logP))) +
-    geom_point(aes(size = Count, color = logP)) +
-    scale_color_gradient(low = "blue", high = "red") +
-    labs(title = paste("GO Enrichment for", cl),
-         x = "Gene Ratio",
-         y = "GO Term",
-         color = "-log10(p.adjust)") +
-    theme_minimal()
-  
-  # Store and print the plot for the cluster
-  plots[[cl]] <- p
-  print(p)}
-
-# Save All Enrichment Results
-saveRDS(enrichment_results, file = "enrichment_results_by_cluster.rds")
-cat("Enrichment results saved to enrichment_results_by_cluster.rds\n")
-
-#=========================================
-#STEP 6 : Differential Abundance analysis 
-#=========================================
-Load required libraries
-library(speckle)   # Propeller
-library(Seurat)    # Seurat functions
-library(limma)     # contrasts and model matrix
-library(ggplot2)   # for plotting
-library(dplyr)     # data manipulation
-library(tidyr)     # data reshaping
-library(scales)    # for formatting
-
-# Load your Seurat objects (adjust file paths as needed)
-file_path_all_neuron_reads <- "/Users/annaconneally/Desktop/R_datasets/remote_memory_data/all_neuron_reads.Robj"
-file_path_non_neuronal_cells <- "/Users/annaconneally/Desktop/R_datasets/remote_memory_data/TRAP2_non_neuronal_cells.Robj"
-load(file_path_all_neuron_reads)
-load(file_path_non_neuronal_cells)
-
-# Check metadata structure of your loaded object
-print(all_para_reads_filt)
-head(all_para_reads_filt@meta.data)
-
-# Step 1: Subset microglia cell types
-microglia <- subset(all_para_reads_filt, celltype == "3_Microglia_Il1a+" | celltype == "4_Microglia_Il1a-")
-
-# Filter out samples with fewer than 3 cells
-microglia <- subset(microglia, cells = colnames(microglia)[table(microglia$orig.ident)[microglia$orig.ident] >= 3])
-head(microglia)
-
-# Step 2: Normalization and finding variable features
-microglia <- NormalizeData(microglia, normalization.method = "LogNormalize", scale.factor = 10000)
-microglia <- FindVariableFeatures(microglia, selection.method = "vst", nfeatures = 2000)
-
-# Step 3: Scale the data
-all.genes <- rownames(microglia)
-microglia <- ScaleData(microglia, features = all.genes)
-
-# Step 4: Perform PCA and visualize
-microglia <- RunPCA(microglia, features = VariableFeatures(object = microglia))
-
-# Step 5: Find nearest neighbors and clusters
-microglia <- FindNeighbors(microglia, dims = 1:5)
-microglia <- FindClusters(microglia, resolution = 0.2)
-
-# Step 6: Add experimental conditions to metadata
-microglia$condition <- NA  # Initialise
-microglia$condition[microglia$orig.ident %in% c("FC", "T1")] <- "FC"
-microglia$condition[microglia$orig.ident %in% c("Homecage", "T5")] <- "Homecage"
-microglia$condition[microglia$orig.ident %in% c("Fearonly", "T4")] <- "Fearonly"
-microglia$condition[microglia$orig.ident %in% c("Context", "T2", "T3")] <- "Context"
-
+#=============================================================
+# STEP 5 : Propellor | Cell Abundace Analysis Across Condition
+#=============================================================
 # Step 7: Prepare data for propeller analysis
 meta_data <- microglia@meta.data
 meta_data <- meta_data %>% dplyr::select(orig.ident, seurat_clusters, condition)
@@ -390,100 +296,174 @@ ggplot(prop_long, aes(x = Cluster, y = Proportion, fill = Condition)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
-# ============================================================================================================================
-# A: Side analysis of the Ila+ and Ila- labelled microglia: Identify Differentially Expressed Genes (DEGs) Between Il1a+ and Il1a-
-# =============================================================================================================================
-microglia_DEG_ila <- FindMarkers(all_para_reads_filt, ident.1 = "3_Microglia_Il1a+", ident.2 = "4_Microglia_Il1a-", min.pct = 0.25)
-head(microglia_DEG_ila)  # View top DEGs
+#============================================
+# STEP 6 GENE ONTOLOGY ANALYSIS 
+#============================================
+#Gene Ontology (GO) enrichment analysis & Gene Set Enrichment Analysis (GSEA) separately for each cluster using the (DEGs) from downstream file.
+#GO Enrichment Analysis (enrichGO) - Identifies enriched Gene Ontology terms.
+#Gene Set Enrichment Analysis (GSEA) (GSEA) - Performs ranking-based pathway analysis.
+install.packages("BiocManager")
+BiocManager::install(c("clusterProfiler", "org.Mm.eg.db", "enrichplot", "ggplot2", "dplyr"))
 
-# ================================================================
-# Step 7: GO Enrichment for All Microglia (Il1a+ & Il1a- Together)
-# ================================================================
-# Extract highly expressed genes - maybe use hvg for this
-microglia_avg_exp <- AverageExpression(microglia_cells, assay = "RNA", return.seurat = FALSE)
-# Convert Symbols to Entrez IDs (Top 500 Genes)
-top_genes <- rownames(microglia_avg_exp$RNA[order(-microglia_avg_exp$RNA[, 1]), ])[1:500]
-gene_entrez_all <- na.omit(mapIds(org.Mm.eg.db, keys = top_genes, column = "ENTREZID", keytype = "SYMBOL", multiVals = "first"))
-# Perform GO Enrichment for All Microglia
-go_results_all <- enrichGO(
-  gene = gene_entrez_all,
-  OrgDb = org.Mm.eg.db,
-  keyType = "ENTREZID",
-  ont = "BP",  
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  qvalueCutoff = 0.05)
-# Visualise GO Enrichment for All Microglia
-dotplot(go_results_all, showCategory = 10) +
-  ggtitle("GO Enrichment for All Microglia (Il1a+ and Il1a-)")
+library(clusterProfiler)
+library(org.Mm.eg.db)  # Use org.Hs.eg.db for human genes
+library(enrichplot)
+library(ggplot2)
+library(dplyr)
 
-# =====================================
-# Step 8: Separate GO Enrichment for Il1a+ and Il1a-
-# =====================================
-# Extract Upregulated Genes for Each Group
-Il1a_plus_DEGs <- rownames(microglia_markers[microglia_markers$avg_log2FC > 0 & microglia_markers$p_val_adj < 0.05, ])
-Il1a_minus_DEGs <- rownames(microglia_markers[microglia_markers$avg_log2FC < 0 & microglia_markers$p_val_adj < 0.05, ])
-# Convert to Entrez IDs
-Il1a_plus_entrez <- na.omit(mapIds(org.Mm.eg.db, keys = Il1a_plus_DEGs, column = "ENTREZID", keytype = "SYMBOL", multiVals = "first"))
-Il1a_minus_entrez <- na.omit(mapIds(org.Mm.eg.db, keys = Il1a_minus_DEGs, column = "ENTREZID", keytype = "SYMBOL", multiVals = "first"))
-# Perform GO Enrichment for Il1a+
-go_results_Il1a_plus <- enrichGO(
-  gene = Il1a_plus_entrez,
-  OrgDb = org.Mm.eg.db,
-  keyType = "ENTREZID",
-  ont = "BP",  
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  qvalueCutoff = 0.05)
-# Perform GO Enrichment for Il1a-
-go_results_Il1a_minus <- enrichGO(
-  gene = Il1a_minus_entrez,
-  OrgDb = org.Mm.eg.db,
-  keyType = "ENTREZID",
-  ont = "BP",
-  pAdjustMethod = "BH",
-  pvalueCutoff = 0.05,
-  qvalueCutoff = 0.05)
+downstream <- read.csv("downstream_genes.csv")  # Load DEGs file
+cluster_list <- unique(downstream$cluster)  # Get unique cluster IDs
 
-# ================================================
-# Step 9: Compare GO Terms Between Il1a+ and Il1a-
-# ================================================
-# Convert GO results to dataframes
-go_plus_df <- as.data.frame(go_results_Il1a_plus)
-go_minus_df <- as.data.frame(go_results_Il1a_minus)
+go_results_list <- list()
+for (cl in cluster_list) {
+  cluster_genes <- downstream %>%
+    filter(cluster == cl) %>%
+    pull(gene)  # Extract gene symbols for the cluster
+  
+  gene_ids <- bitr(cluster_genes, fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Mm.eg.db)
+  
+  go_results <- enrichGO(
+    gene         = gene_ids$ENTREZID,
+    OrgDb        = org.Mm.eg.db,
+    keyType      = "ENTREZID",
+    ont          = "BP",  # Biological Process
+    pAdjustMethod = "BH",
+    pvalueCutoff  = 0.05,
+    qvalueCutoff  = 0.05
+  )
+  
+  go_results_list[[paste0("Cluster_", cl)]] <- go_results
+  
+  # Save results for each cluster
+  write.csv(as.data.frame(go_results), paste0("GO_Cluster_", cl, ".csv"), row.names=FALSE)
+}
 
-# Extract GO Term Descriptions
-go_plus_terms <- go_plus_df$Description
-go_minus_terms <- go_minus_df$Description
+#Visualisation - replace for each cluster 
+barplot(go_results_list[["Cluster_3"]], showCategory=10, title="Top GO Terms for Cluster 3")
+dotplot(go_results_list[["Cluster_3"]], showCategory=10, title="GO Dotplot for Cluster 3")
 
-# Identify Shared & Unique GO Terms
-shared_terms <- intersect(go_plus_terms, go_minus_terms)
-unique_plus <- setdiff(go_plus_terms, go_minus_terms)
-unique_minus <- setdiff(go_minus_terms, go_plus_terms)
+#============================================
+# STEP 7:  Gene Set Enrichment Analysis 
+#============================================
+# Load required libraries
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(msigdbr)
+library(dplyr)
+library(enrichplot)
+library(ggplot2)
 
-# Print Results
-cat("Shared GO Terms:\n", shared_terms, "\n")
-cat("\nGO Terms Unique to Il1a+:\n", unique_plus, "\n")
-cat("\nGO Terms Unique to Il1a-:\n", unique_minus, "\n")
+# Initialise list to store GSEA results
+gsea_results_list <- list()
 
-# ===================================================
-# Step 10: Visualise GO Enrichment for Il1a+ vs Il1a-
-# ====================================================
-# Il1a+ GO Enrichment Plot
-dotplot(go_results_Il1a_plus, showCategory = 10) + ggtitle("GO Enrichment for Il1a+ Microglia")
+# Ensure MSigDB gene sets are correctly formatted
+msigdb_terms <- msigdbr(species = "Mus musculus", category = "C5") %>%
+  dplyr::select(gs_name, gene_symbol)
 
-# Il1a- GO Enrichment Plot
-dotplot(go_results_Il1a_minus, showCategory = 10) + ggtitle("GO Enrichment for Il1a- Microglia")
+# Convert gene symbols to Entrez IDs for MSigDB gene sets
+msigdb_terms <- merge(msigdb_terms, bitr(msigdb_terms$gene_symbol, 
+                                         fromType = "SYMBOL", 
+                                         toType = "ENTREZID", 
+                                         OrgDb = org.Mm.eg.db), 
+                      by.x = "gene_symbol", 
+                      by.y = "SYMBOL") %>%
+  dplyr::select(gs_name, ENTREZID)
 
-# =====================================
-# Step 11: Save Results
-# =====================================
-write.csv(as.data.frame(go_results_all), "GO_All_Microglia.csv")
-write.csv(as.data.frame(go_results_Il1a_plus), "GO_Il1a_Plus.csv")
-write.csv(as.data.frame(go_results_Il1a_minus), "GO_Il1a_Minus.csv")
-saveRDS(all_para_reads_filt, "processed_microglia_seurat.rds")
-# Show First 10 GO Terms and Associated Genes
-go_results_df <- as.data.frame(go_results_all)
-head(go_results_df[, c("Description", "geneID")], 10)
-print(all_para_reads_filt)
+# Loop through each cluster
+for (cl in unique(microglia.markers$cluster)) {
+  
+  cat(paste0("\nProcessing GSEA for Cluster ", cl, "...\n"))
+  
+  # Extract DEGs for the current cluster and rank by log fold change
+  cluster_degs <- microglia.markers %>%
+    filter(cluster == cl) %>%
+    arrange(desc(avg_log2FC))  # Rank genes by log2FC
+
+  # Extract gene names and log2FC values
+  ranked_genes <- cluster_degs$avg_log2FC
+  names(ranked_genes) <- cluster_degs$gene
+
+  # Convert gene symbols to Entrez IDs
+  gene_ids <- bitr(names(ranked_genes), fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Mm.eg.db)
+
+  # **Fix: Ensure Only Mapped Genes Are Kept**
+  if (nrow(gene_ids) == 0) {
+    cat(paste0("Skipping Cluster ", cl, ": No valid genes mapped.\n"))
+    next  # Skip if no genes mapped
+  }
+
+  ranked_genes <- ranked_genes[gene_ids$SYMBOL]  # Keep only successfully mapped genes
+  names(ranked_genes) <- gene_ids$ENTREZID  # Assign Entrez IDs as names
+
+  # **Fix: Skip Cluster if No Valid Genes Remain**
+  if (length(ranked_genes) == 0) {
+    cat(paste0("Skipping Cluster ", cl, ": No valid genes remain after filtering.\n"))
+    next  # Skip to the next cluster
+  }
+
+  # 🔍 **Print Debugging Info (Optional)**
+  cat("Number of genes used in GSEA:", length(ranked_genes), "\n")
+  
+  # Run GSEA
+  gsea_results <- tryCatch({
+    GSEA(
+      ranked_genes,
+      TERM2GENE = msigdb_terms,
+      pAdjustMethod = "BH",
+      pvalueCutoff  = 0.1,
+      scoreType = "pos",
+      minGSSize = 5
+    )
+  }, error = function(e) {
+    cat(paste0("Error in GSEA for Cluster ", cl, ": ", e$message, "\n"))
+    return(NULL)
+  })
+
+  # Store results
+  if (!is.null(gsea_results)) {
+    gsea_results_list[[paste0("Cluster_", cl)]] <- gsea_results
+  }
+
+  # Save results if there are significant pathways
+  if (!is.null(gsea_results) && nrow(gsea_results@result) > 0) {
+    write.csv(as.data.frame(gsea_results@result), paste0("GSEA_Cluster_", cl, ".csv"), row.names = FALSE)
+  }
+}
+
+# **Fix: Check If Any Clusters Had Significant Enrichment Before Plotting**
+if (length(gsea_results_list) == 0) {
+  cat("\nNo significant GSEA results found for any cluster.\n")
+} else {
+  # Visualise results **only for clusters with significant enrichment**
+  for (cl in names(gsea_results_list)) {
+      
+      # 🔍 **Check if the cluster contains enriched pathways**
+      if (!is.null(gsea_results_list[[cl]]) && nrow(gsea_results_list[[cl]]@result) > 0) {
+          
+          plot_path <- paste0(cl, "_GSEA_dotplot.png")
+          
+          # Generate and Save Dot Plot
+          dot_plot <- dotplot(gsea_results_list[[cl]], showCategory = 10) + 
+                     ggtitle(paste0("Top Enriched Gene Sets (", cl, ")"))
+          ggsave(plot_path, dot_plot, width = 8, height = 6, dpi = 300)
+          
+          print(dot_plot)  # Display dot plot inline
+
+          # Generate and Save Enrichment Plot (Top 5 Pathways)
+          gsea_top_terms <- head(gsea_results_list[[cl]]@result$ID, 5)
+          enrichment_plot <- enrichplot::gseaplot2(gsea_results_list[[cl]], geneSetID = gsea_top_terms)
+          ggsave(paste0(cl, "_GSEA_enrichment.png"), enrichment_plot, width = 8, height = 6, dpi = 300)
+          
+          print(enrichment_plot)  # ✅ Display enrichment plot inline
+
+      } else {
+          cat(paste0("\nSkipping Cluster ", cl, ": No enriched terms found.\n"))
+      }
+  }
+}
+
+
+
+
+
 
