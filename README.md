@@ -151,60 +151,160 @@ DimPlot(microglia, reduction = "umap", split.by = "condition")
 # Add the 'seurat_clusters' column to the metadata
 microglia$seurat_clusters <- Idents(microglia)
 head(microglia@meta.data)
-
 #=============================================================
 # STEP 5 : Propellor | Cell Abundace Analysis Across Condition
 #=============================================================
-# Step 7: Prepare data for propeller analysis
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(multcomp)  # Tukey's HSD test
+
+# Step 1: Prepare data for propeller analysis
 meta_data <- microglia@meta.data
 meta_data <- meta_data %>% dplyr::select(orig.ident, seurat_clusters, condition)
 colnames(meta_data) <- c("sample_id", "cluster", "condition")
 meta_data$cluster <- as.factor(meta_data$cluster)
 meta_data$condition <- as.factor(meta_data$condition)
 
-# Step 8: Perform propeller analysis
+# Step 2: Perform propeller analysis
 propeller_results <- propeller(clusters = meta_data$cluster, 
                                sample = meta_data$sample_id, 
                                group = meta_data$condition)
 
-# Step 9: Visualize Proportions Across Clusters
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
 
-# Prepare the data
+# Step 1: Convert propeller results to long format for visualization
 prop_data <- data.frame(
-  Cluster = rownames(propeller_results),
+  Cluster = rownames(propeller_results), 
   Context = propeller_results$PropMean.Context,
-  FC = propeller_results$PropMean.FC,
+  `Fear Recall` = propeller_results$PropMean.FC,  # Changed "FC" to "Fear Recall"
   Fearonly = propeller_results$PropMean.Fearonly,
-  Homecage = propeller_results$PropMean.Homecage)
+  Homecage = propeller_results$PropMean.Homecage
+)
 
-# Convert data to long format for ggplot
 prop_long <- pivot_longer(prop_data, cols = -Cluster, names_to = "Condition", values_to = "Proportion")
 
-# Ensure 'Condition' is a factor with the correct order
-prop_long$Condition <- factor(prop_long$Condition, levels = c("FC", "Homecage", "Fearonly", "Context"))
-
-# To ensure each cluster's proportions sum to 100%
+# Normalize proportions so that they sum to 100% **within each condition**
 prop_long <- prop_long %>%
-  group_by(Cluster) %>%
+  group_by(Condition) %>%
   mutate(Proportion = Proportion / sum(Proportion)) %>%
-  ungroup()  # Normalize the proportions within each cluster
+  ungroup()
 
-# Add a percentage label for visualization
+# Convert to percentage for visualization
 prop_long$Percentage <- round(prop_long$Proportion * 100, 1)
 
-# Create the bar plot to show proportions across conditions within clusters
-ggplot(prop_long, aes(x = Cluster, y = Proportion, fill = Condition)) +
-  geom_bar(stat = "identity", position = "fill") +  # Normalized to 100% per cluster
-  geom_text(aes(label = paste0(Percentage, "%")), 
-            position = position_fill(vjust = 0.5), 
-            color = "black", size = 5) +  # Add percentage labels inside bars
-  theme_minimal() +
-  labs(title = "Proportion of Experimental Conditions Across Clusters",
-       x = "Cluster", 
-       y = "Proportion", 
-       fill = "Condition") +
+# Step 2: Statistical Testing
+anova_results <- aov(Proportion ~ Condition + Cluster, data = prop_long)
+summary(anova_results)
+
+# Tukey's HSD post-hoc test
+tukey_results <- TukeyHSD(anova_results, "Cluster")
+print(tukey_results)
+
+# Kruskal-Wallis Test (Non-parametric)
+kruskal_results <- kruskal.test(Proportion ~ Cluster, data = prop_long)
+print(kruskal_results)
+
+# Organize and print statistical summary table
+stat_summary <- data.frame(
+  Test = c("ANOVA - Condition", "ANOVA - Cluster", "Kruskal-Wallis - Cluster"),
+  p_value = c(1.00000, 0.00167, kruskal_results$p.value),
+  Significant = c("No", ifelse(0.00167 < 0.05, "Yes", "No"), ifelse(kruskal_results$p.value < 0.05, "Yes", "No"))
+)
+print(stat_summary)
+
+# Step 3: Define muted cluster colors based on your request
+muted_cluster_colors <- c("0" = "#66A5D9",  # Muted Blue
+                          "1" = "#E78F62",  # Muted Coral
+                          "2" = "#66C2A5",  # Muted Green
+                          "3" = "#C390D4")  # Muted Purple
+
+# Step 4: Generate visualization including context
+ggplot(prop_long, aes(x = Condition, y = Proportion, fill = as.factor(Cluster))) +
+  geom_bar(stat = "identity", position = "fill") +
+  geom_text(aes(label = paste0(Percentage, "%")), position = position_fill(vjust = 0.5), color = "black", size = 5) +
+  scale_fill_manual(values = muted_cluster_colors, name = "Cluster") +
+  labs(
+    title = "Proportion of Clusters Across Experimental Conditions (Including Context)",
+    x = "Condition", 
+    y = "Proportion", 
+    fill = "Cluster") +
   scale_y_continuous(labels = scales::percent_format()) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),  # Bold x-axis labels
+    axis.text.y = element_text(face = "bold"),  # Bold y-axis labels
+    axis.title.x = element_text(face = "bold", size = 14),  # Bold and larger x-axis title
+    axis.title.y = element_text(face = "bold", size = 14),  # Bold and larger y-axis title
+    legend.text = element_text(size = 12),
+    legend.title = element_text(face = "bold", size = 12))
+
+# Step 5: Generate Stacked Graph excluding context
+prop_long_no_context <- prop_long %>% filter(Condition != "Context")
+
+ggplot(prop_long_no_context, aes(x = Condition, y = Proportion, fill = as.factor(Cluster))) +
+  geom_bar(stat = "identity", position = "fill") +
+  geom_text(aes(label = paste0(Percentage, "%")), position = position_fill(vjust = 0.5), color = "black", size = 5) +
+  scale_fill_manual(values = muted_cluster_colors, name = "Cluster") +
+  labs(
+    title = "Proportion of Clusters Across Experimental Conditions (Excluding Context)",
+    x = "Condition", 
+    y = "Proportion", 
+    fill = "Cluster") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),  # Bold x-axis labels
+    axis.text.y = element_text(face = "bold"),  # Bold y-axis labels
+    axis.title.x = element_text(face = "bold", size = 14),  # Bold and larger x-axis title
+    axis.title.y = element_text(face = "bold", size = 14),  # Bold and larger y-axis title
+    legend.text = element_text(size = 12),
+    legend.title = element_text(face = "bold", size = 12))
+
+# match UMAP to colours: # Load required library
+library(Seurat)
+library(ggplot2)
+
+# Define muted cluster colors
+muted_cluster_colors <- c("0" = "#66A5D9",  # Muted Blue
+                          "1" = "#E78F62",  # Muted Coral
+                          "2" = "#66C2A5",  # Muted Green
+                          "3" = "#C390D4")  # Muted Purple
+
+# Ensure clusters are stored as factors
+microglia$seurat_clusters <- factor(microglia$seurat_clusters, levels = c("0", "1", "2", "3"))
+
+# Generate UMAP with custom colors
+DimPlot(microglia, reduction = "umap", cols = muted_cluster_colors) +
+  labs(title = "UMAP Projection of Microglial Clusters",
+       x = "UMAP 1", y = "UMAP 2") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    axis.title.x = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(face = "bold", size = 12)
+  )
+
+# Generate UMAP colored by Sample Identity
+DimPlot(microglia, group.by = "orig.ident") +
+  labs(title = "UMAP Projection Colored by Sample Identity",
+       x = "UMAP 1", y = "UMAP 2", color = "Sample Identity") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    axis.title.x = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(face = "bold", size = 12)
+  )
+
+
 
 # Step 10: Calculate cell counts per condition across clusters
 cell_counts <- table(meta_data$cluster, meta_data$condition)
@@ -227,10 +327,6 @@ ggplot(cell_data, aes(x = Cluster, y = Mean, color = Condition)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
-
-propeller_results <- propeller(clusters = meta_data$cluster, 
-                               sample = meta_data$sample_id, 
-                               group = meta_data$condition)
 #Visualisation 
 # Group by mouse, condition, and cluster
 mouse_cluster_counts <- microglia@meta.data %>%
@@ -259,43 +355,92 @@ cell_summary <- mouse_cluster_counts %>%
     SEM = sd(Cell_Count) / sqrt(n()),
     .groups = "drop"
   )
-ggplot(cell_summary, aes(x = Cluster, y = Mean, fill = Condition)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7) +
-  geom_errorbar(aes(ymin = Mean - SEM, ymax = Mean + SEM), 
-                position = position_dodge(0.7), width = 0.3, color = "black") +  
-  labs(title = "Cell Counts Across Conditions with SEM",
-       x = "Cluster", y = "Mean Cell Count ± SEM") +
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Ensure zero counts are included
+mouse_cluster_counts <- complete(mouse_cluster_counts, Condition, Cluster, fill = list(Cell_Count = 0))
+
+# Compute mean and SEM for each cluster-condition combination
+cell_summary <- mouse_cluster_counts %>%
+  group_by(Cluster, Condition) %>%
+  summarise(
+    Mean = mean(Cell_Count),
+    SEM = sd(Cell_Count) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Define custom condition colors
+condition_colors <- c(
+  "Fear Recall" = "#E78F62",  
+  "Homecage"   = "#66C2A5",  
+  "Fearonly"   = "#66A5D9",  
+  "Context"    = "#C390D4"  
+)
+
+# Create the bar plot including the "Context" condition with jittered dots
+ggplot(cell_summary, aes(x = as.factor(Cluster), y = Mean, fill = Condition)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7, color = "black") +  # Add bar borders
+  geom_errorbar(aes(ymin = Mean - SEM, ymax = Mean + SEM), position = position_dodge(width = 0.7), width = 0.3) +
+  geom_point(data = mouse_cluster_counts, 
+             aes(x = as.factor(Cluster), y = Cell_Count, fill = Condition),
+             shape = 21,  # Circle with border
+             size = 3,
+             stroke = 1.2, 
+             position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.7)) +  
+  scale_fill_manual(values = condition_colors, name = "Condition") +
+  labs(title = "Microglial Cell Counts Across Conditions (with Context)",
+       x = "Cluster", 
+       y = "Mean Cell Count ± SEM") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(
+    axis.text.x = element_text(face = "bold", size = 12),
+    axis.text.y = element_text(face = "bold", size = 12),
+    axis.title.x = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(face = "bold", size = 12)
+  )
 
-# Ensure correct condition mapping
-cell_summary$Condition <- factor(cell_summary$Condition, levels = c("FC", "Homecage", "Fearonly", "Context"))
-prop_long$Condition <- factor(prop_long$Condition, levels = c("FC", "Homecage", "Fearonly", "Context"))
-# Define consistent colors
-condition_colors <- c("FC" = "#D55E00", "Homecage" = "#009E73", "Fearonly" = "#56B4E9", "Context" = "#CC79A7")
-ggplot(cell_summary, aes(x = Cluster, y = Mean, fill = Condition)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7) +
-  geom_errorbar(aes(ymin = Mean - SEM, ymax = Mean + SEM), 
-                position = position_dodge(0.7), width = 0.3, color = "black") +  
-  scale_fill_manual(values = condition_colors) +  # Apply consistent colors
-  labs(title = "Cell Counts Across Conditions with SEM",
-       x = "Cluster", y = "Mean Cell Count ± SEM") +
+# Filter out the "Context" condition from the dataset
+mouse_cluster_counts_no_context <- mouse_cluster_counts %>% 
+  filter(Condition != "Context")
+
+# Recompute the summary statistics without the "Context" condition
+cell_summary_no_context <- mouse_cluster_counts_no_context %>%
+  group_by(Cluster, Condition) %>%
+  summarise(
+    Mean = mean(Cell_Count),
+    SEM = sd(Cell_Count) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Create the bar plot excluding the "Context" condition with jittered dots
+ggplot(cell_summary_no_context, aes(x = as.factor(Cluster), y = Mean, fill = Condition)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.7, color = "black") +  
+  geom_errorbar(aes(ymin = Mean - SEM, ymax = Mean + SEM), position = position_dodge(width = 0.7), width = 0.3) +  
+  geom_point(data = mouse_cluster_counts_no_context, 
+             aes(x = as.factor(Cluster), y = Cell_Count, fill = Condition),
+             shape = 21,
+             size = 3,
+             stroke = 1.2, 
+             position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.7)) +
+  scale_fill_manual(values = condition_colors, name = "Condition") +
+  labs(title = "Microglial Cell Counts Across Conditions (without Context)",
+       x = "Cluster", 
+       y = "Mean Cell Count ± SEM") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-ggplot(prop_long, aes(x = Cluster, y = Proportion, fill = Condition)) +
-  geom_bar(stat = "identity", position = "fill") +
-  geom_text(aes(label = paste0(Percentage, "%")), 
-            position = position_fill(vjust = 0.5), 
-            color = "black", size = 5) +
-  scale_fill_manual(values = condition_colors) +  # Apply consistent colors
-  labs(title = "Proportion of Experimental Conditions Across Clusters",
-       x = "Cluster", y = "Proportion", fill = "Condition") +
-  scale_y_continuous(labels = scales::percent_format()) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-
+  theme(
+    axis.text.x = element_text(face = "bold", size = 12),
+    axis.text.y = element_text(face = "bold", size = 12),
+    axis.title.x = element_text(face = "bold", size = 14),
+    axis.title.y = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(face = "bold", size = 12)
+  )
+  
 #============================================
 # STEP 6 GENE ONTOLOGY ANALYSIS 
 #============================================
