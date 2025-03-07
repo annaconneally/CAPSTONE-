@@ -608,6 +608,35 @@ if (length(gsea_results_list) == 0) {
 }
 
 
+#other graphs: library(Seurat)
+library(ggplot2)
+library(RColorBrewer)
+
+# 1) Extract the first two principal components (PC1, PC2)
+pca_coords <- Embeddings(microglia, "pca")[, 1:2]
+
+# 2) Create a data frame with PC1, PC2, and Condition
+plot_data <- data.frame(
+  PC1 = pca_coords[, 1],
+  PC2 = pca_coords[, 2],
+  Condition = microglia$condition  # Ensure that 'condition' exists in your metadata
+)
+
+# 3) Create a strong color palette using RColorBrewer's "Set1"
+n_conditions <- length(unique(plot_data$Condition))
+strong_palette <- brewer.pal(n = n_conditions, name = "Set1")
+
+# 4) Plot the PCA with strong colors assigned to each condition
+ggplot(plot_data, aes(x = PC1, y = PC2, color = Condition)) +
+  geom_point(size = 3) +
+  scale_color_manual(values = strong_palette) +
+  theme_minimal() +
+  labs(
+    title = "PCA: PC1 vs. PC2 by Condition (Strong Colours)",
+    x = "Principal Component 1 (PC1)",
+    y = "Principal Component 2 (PC2)"
+  )
+
 
 
 
