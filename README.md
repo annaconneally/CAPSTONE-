@@ -126,7 +126,7 @@ microglia.markers %>%
   group_by(cluster) %>%
   dplyr::filter(abs(avg_log2FC) > 0.25) 
 markers<-read.csv("filtered_microglia_markers.csv",stringsAsFactors = FALSE)
-# To retain only statistically significant genes (p_val_adj ≤ 0.05) and save them in a new file (downstream)
+# To retain only statistically significant genes (p_val_adj ≤ 0.05)  save them in a new file (downstream)
 downstream <- microglia.markers %>% 
   dplyr::filter(p_val_adj <= 0.05)
 # Save for downstream GO analysis
@@ -177,7 +177,7 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# Step 1: Convert propeller results to long format for visualization
+# Step 1: Convert propeller results to long format for visualisation
 prop_data <- data.frame(
   Cluster = rownames(propeller_results), 
   Context = propeller_results$PropMean.Context,
@@ -188,7 +188,7 @@ prop_data <- data.frame(
 
 prop_long <- pivot_longer(prop_data, cols = -Cluster, names_to = "Condition", values_to = "Proportion")
 
-# Normalize proportions so that they sum to 100% **within each condition**
+# Normalise proportions so that they sum to 100% **within each condition**
 prop_long <- prop_long %>%
   group_by(Condition) %>%
   mutate(Proportion = Proportion / sum(Proportion)) %>%
@@ -223,7 +223,7 @@ muted_cluster_colors <- c("0" = "#66A5D9",  # Muted Blue
                           "2" = "#66C2A5",  # Muted Green
                           "3" = "#C390D4")  # Muted Purple
 
-# Step 4: Generate visualization including context
+# Step 4: Generate graph including context
 ggplot(prop_long, aes(x = Condition, y = Proportion, fill = as.factor(Cluster))) +
   geom_bar(stat = "identity", position = "fill") +
   geom_text(aes(label = paste0(Percentage, "%")), position = position_fill(vjust = 0.5), color = "black", size = 5) +
@@ -288,8 +288,7 @@ DimPlot(microglia, reduction = "umap", cols = muted_cluster_colors) +
     axis.title.x = element_text(face = "bold", size = 14),
     axis.title.y = element_text(face = "bold", size = 14),
     legend.text = element_text(size = 12),
-    legend.title = element_text(face = "bold", size = 12)
-  )
+    legend.title = element_text(face = "bold", size = 12))
 
 # Generate UMAP colored by Sample Identity
 DimPlot(microglia, group.by = "orig.ident") +
@@ -301,10 +300,7 @@ DimPlot(microglia, group.by = "orig.ident") +
     axis.title.x = element_text(face = "bold", size = 14),
     axis.title.y = element_text(face = "bold", size = 14),
     legend.text = element_text(size = 12),
-    legend.title = element_text(face = "bold", size = 12)
-  )
-
-
+    legend.title = element_text(face = "bold", size = 12))
 
 # Step 10: Calculate cell counts per condition across clusters
 cell_counts <- table(meta_data$cluster, meta_data$condition)
@@ -313,7 +309,7 @@ cell_counts <- table(meta_data$cluster, meta_data$condition)
 cell_counts <- as.data.frame(cell_counts)
 colnames(cell_counts) <- c("Cluster", "Condition", "Freq")
 
-# Now, the 'Cluster' and 'Condition' columns will be available for plotting
+# Now, 'Cluster' and 'Condition' columns available for plotting
 ggplot(cell_data, aes(x = Cluster, y = Mean, color = Condition)) +
   geom_bar(stat = "identity", position = "dodge", width = 0.7) +
   geom_errorbar(aes(ymin = Mean - SEM, ymax = Mean + SEM), 
@@ -346,15 +342,13 @@ mouse_cluster_counts <- mouse_cluster_counts %>%
     Condition %in% c("Homecage", "T5") ~ "Homecage",
     Condition %in% c("Fearonly", "T4") ~ "Fearonly",
     Condition %in% c("T2", "T3", "Context") ~ "Context",
-    TRUE ~ Condition  # Keep other labels unchanged
-  ))
+    TRUE ~ Condition  # Keep other labels unchanged))
 cell_summary <- mouse_cluster_counts %>%
   group_by(Cluster, Condition) %>%
   summarise(
     Mean = mean(Cell_Count),
     SEM = sd(Cell_Count) / sqrt(n()),
-    .groups = "drop"
-  )
+    .groups = "drop")
 # Load required libraries
 library(ggplot2)
 library(dplyr)
@@ -369,16 +363,14 @@ cell_summary <- mouse_cluster_counts %>%
   summarise(
     Mean = mean(Cell_Count),
     SEM = sd(Cell_Count) / sqrt(n()),
-    .groups = "drop"
-  )
+    .groups = "drop")
 
 # Define custom condition colors
 condition_colors <- c(
   "Fear Recall" = "#E78F62",  
   "Homecage"   = "#66C2A5",  
   "Fearonly"   = "#66A5D9",  
-  "Context"    = "#C390D4"  
-)
+  "Context"    = "#C390D4" )
 
 # Create the bar plot including the "Context" condition with jittered dots
 ggplot(cell_summary, aes(x = as.factor(Cluster), y = Mean, fill = Condition)) +
@@ -401,8 +393,7 @@ ggplot(cell_summary, aes(x = as.factor(Cluster), y = Mean, fill = Condition)) +
     axis.title.x = element_text(face = "bold", size = 14),
     axis.title.y = element_text(face = "bold", size = 14),
     legend.text = element_text(size = 12),
-    legend.title = element_text(face = "bold", size = 12)
-  )
+    legend.title = element_text(face = "bold", size = 12))
 
 # Filter out the "Context" condition from the dataset
 mouse_cluster_counts_no_context <- mouse_cluster_counts %>% 
@@ -414,8 +405,7 @@ cell_summary_no_context <- mouse_cluster_counts_no_context %>%
   summarise(
     Mean = mean(Cell_Count),
     SEM = sd(Cell_Count) / sqrt(n()),
-    .groups = "drop"
-  )
+    .groups = "drop")
 
 # Create the bar plot excluding the "Context" condition with jittered dots
 ggplot(cell_summary_no_context, aes(x = as.factor(Cluster), y = Mean, fill = Condition)) +
@@ -438,8 +428,7 @@ ggplot(cell_summary_no_context, aes(x = as.factor(Cluster), y = Mean, fill = Con
     axis.title.x = element_text(face = "bold", size = 14),
     axis.title.y = element_text(face = "bold", size = 14),
     legend.text = element_text(size = 12),
-    legend.title = element_text(face = "bold", size = 12)
-  )
+    legend.title = element_text(face = "bold", size = 12))
   
 #============================================
 # STEP 6 GENE ONTOLOGY ANALYSIS 
@@ -474,8 +463,7 @@ for (cl in cluster_list) {
     ont          = "BP",  # Biological Process
     pAdjustMethod = "BH",
     pvalueCutoff  = 0.05,
-    qvalueCutoff  = 0.05
-  )
+    qvalueCutoff  = 0.05)
   
   go_results_list[[paste0("Cluster_", cl)]] <- go_results
   
@@ -546,7 +534,7 @@ for (cl in unique(microglia.markers$cluster)) {
     next  # Skip to the next cluster
   }
 
-  # 🔍 **Print Debugging Info (Optional)**
+  # **Print Debugging Info 
   cat("Number of genes used in GSEA:", length(ranked_genes), "\n")
   
   # Run GSEA
@@ -575,14 +563,14 @@ for (cl in unique(microglia.markers$cluster)) {
   }
 }
 
-# **Fix: Check If Any Clusters Had Significant Enrichment Before Plotting**
+# **Fix: Check If Any Clusters are Significant Enrichment Before Plotting**
 if (length(gsea_results_list) == 0) {
   cat("\nNo significant GSEA results found for any cluster.\n")
 } else {
-  # Visualise results **only for clusters with significant enrichment**
+  # plot results but code only consideres clusters with significant enrichment**
   for (cl in names(gsea_results_list)) {
       
-      # 🔍 **Check if the cluster contains enriched pathways**
+      # **Check if the cluster contains enriched pathways**
       if (!is.null(gsea_results_list[[cl]]) && nrow(gsea_results_list[[cl]]@result) > 0) {
           
           plot_path <- paste0(cl, "_GSEA_dotplot.png")
@@ -599,7 +587,7 @@ if (length(gsea_results_list) == 0) {
           enrichment_plot <- enrichplot::gseaplot2(gsea_results_list[[cl]], geneSetID = gsea_top_terms)
           ggsave(paste0(cl, "_GSEA_enrichment.png"), enrichment_plot, width = 8, height = 6, dpi = 300)
           
-          print(enrichment_plot)  # ✅ Display enrichment plot inline
+          print(enrichment_plot)  #Display enrichment plot inline
 
       } else {
           cat(paste0("\nSkipping Cluster ", cl, ": No enriched terms found.\n"))
@@ -622,11 +610,11 @@ plot_data <- data.frame(
   Condition = microglia$condition  # Ensure that 'condition' exists in your metadata
 )
 
-# 3) Create a strong color palette using RColorBrewer's "Set1"
+# 3) set color palette using RColorBrewer's "Set1"
 n_conditions <- length(unique(plot_data$Condition))
 strong_palette <- brewer.pal(n = n_conditions, name = "Set1")
 
-# 4) Plot the PCA with strong colors assigned to each condition
+# 4) Plot the PCA 
 ggplot(plot_data, aes(x = PC1, y = PC2, color = Condition)) +
   geom_point(size = 3) +
   scale_color_manual(values = strong_palette) +
