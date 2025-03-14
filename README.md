@@ -689,6 +689,45 @@ print(homecage_plot)
 fearonly_plot <- generate_cluster_plot(fearonly_mouse_cluster_long, "Proportion of Clusters Across Fearonly Mice")
 print(fearonly_plot)
 
+# Subset microglia data for each condition
+FC_mice <- subset(microglia, condition == "FC")
+Fearonly_mice <- subset(microglia, condition == "Fearonly")
+Homecage_mice <- subset(microglia, condition == "Homecage")
+
+# Create contingency tables for each condition
+cluster_mouse_counts_FC <- table(FC_mice$mouse, FC_mice$seurat_clusters)
+cluster_mouse_counts_Fearonly <- table(Fearonly_mice$mouse, Fearonly_mice$seurat_clusters)
+cluster_mouse_counts_Homecage <- table(Homecage_mice$mouse, Homecage_mice$seurat_clusters)
+
+# Perform Chi-square tests separately
+chi_test_FC <- chisq.test(cluster_mouse_counts_FC)
+chi_test_Fearonly <- chisq.test(cluster_mouse_counts_Fearonly)
+chi_test_Homecage <- chisq.test(cluster_mouse_counts_Homecage)
+
+# Print results
+print(chi_test_FC)
+print(chi_test_Fearonly)
+print(chi_test_Homecage)
+
+# Convert to data frame for Kruskal-Wallis
+cluster_mouse_df_FC <- as.data.frame(cluster_mouse_counts_FC)
+colnames(cluster_mouse_df_FC) <- c("Mouse", "Cluster", "Cell_Count")
+
+cluster_mouse_df_Fearonly <- as.data.frame(cluster_mouse_counts_Fearonly)
+colnames(cluster_mouse_df_Fearonly) <- c("Mouse", "Cluster", "Cell_Count")
+
+cluster_mouse_df_Homecage <- as.data.frame(cluster_mouse_counts_Homecage)
+colnames(cluster_mouse_df_Homecage) <- c("Mouse", "Cluster", "Cell_Count")
+
+# Run Kruskal-Wallis tests within each condition
+kruskal_test_FC <- kruskal.test(Cell_Count ~ Cluster, data = cluster_mouse_df_FC)
+kruskal_test_Fearonly <- kruskal.test(Cell_Count ~ Cluster, data = cluster_mouse_df_Fearonly)
+kruskal_test_Homecage <- kruskal.test(Cell_Count ~ Cluster, data = cluster_mouse_df_Homecage)
+
+# Print results
+print(kruskal_test_FC)
+print(kruskal_test_Fearonly)
+print(kruskal_test_Homecage)
 
 
 
