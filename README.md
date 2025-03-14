@@ -603,7 +603,7 @@ plot_data <- data.frame(
   Condition = microglia$condition  # Ensure that 'condition' exists in your metadata
 )
 
-# 3) set color palette using RColorBrewer's "Set1"
+# 3) set colour palette using RColorBrewer's "Set1"
 n_conditions <- length(unique(plot_data$Condition))
 strong_palette <- brewer.pal(n = n_conditions, name = "Set1")
 
@@ -616,7 +616,78 @@ ggplot(plot_data, aes(x = PC1, y = PC2, color = Condition)) +
     title = "PCA: PC1 vs. PC2 by Condition (Strong Colours)",
     x = "Principal Component 1 (PC1)",
     y = "Principal Component 2 (PC2)")
+# Analysing inter-mouse variability code for stats and visualisation 
+# Install required packages (if not already installed)
+install.packages(c("ggplot2", "dplyr", "tidyr", "scales"))
 
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)  # For percentage formatting
+# Define muted cluster colours
+muted_cluster_colors <- c("0" = "#66A5D9",  # Muted Blue
+                          "1" = "#E78F62",  # Muted Coral
+                          "2" = "#66C2A5",  # Muted Green
+                          "3" = "#C390D4")  # Muted Purple
+
+# Extract data for each condition
+fc_mouse_cluster_counts <- table(microglia$mouse[microglia$condition == "FC"], microglia$seurat_clusters)
+homecage_mouse_cluster_counts <- table(microglia$mouse[microglia$condition == "Homecage"], microglia$seurat_clusters)
+fearonly_mouse_cluster_counts <- table(microglia$mouse[microglia$condition == "Fearonly"], microglia$seurat_clusters)
+
+# Convert tables to data frames
+fc_mouse_cluster_long <- as.data.frame(fc_mouse_cluster_counts)
+homecage_mouse_cluster_long <- as.data.frame(homecage_mouse_cluster_counts)
+fearonly_mouse_cluster_long <- as.data.frame(fearonly_mouse_cluster_counts)
+
+# Rename columns
+colnames(fc_mouse_cluster_long) <- c("Mouse", "Cluster", "Cell_Count")
+colnames(homecage_mouse_cluster_long) <- c("Mouse", "Cluster", "Cell_Count")
+colnames(fearonly_mouse_cluster_long) <- c("Mouse", "Cluster", "Cell_Count")
+# Function to compute percentages per mouse
+compute_percentages <- function(data) {
+    data %>%
+        group_by(Mouse) %>%
+        mutate(Percentage = round((Cell_Count / sum(Cell_Count)) * 100, 1))
+}
+
+# Compute percentages for each condition
+fc_mouse_cluster_long <- compute_percentages(fc_mouse_cluster_long)
+homecage_mouse_cluster_long <- compute_percentages(homecage_mouse_cluster_long)
+fearonly_mouse_cluster_long <- compute_percentages(fearonly_mouse_cluster_long)
+# Function to generate stacked bar plots with percentage labels
+generate_cluster_plot <- function(data, title) {
+    ggplot(data, aes(x = Mouse, y = Cell_Count, fill = Cluster)) +
+        geom_bar(stat = "identity", position = "fill", color = "black") +  # Stacked bar chart
+        geom_text(aes(label = paste0(Percentage, "%")), 
+                  position = position_fill(vjust = 0.5),  # Centers text inside bars
+                  color = "white",  # White text for readability
+                  size = 5) +  # Adjust font size
+        scale_fill_manual(values = muted_cluster_colors, name = "Cluster") +  # Apply muted colors
+        theme_minimal() +
+        labs(
+            title = title,
+            x = "Mouse",
+            y = "Proportion of Cells",
+            fill = "Cluster"
+        ) +
+        scale_y_continuous(labels = scales::percent_format()) +  # Show y-axis as percentages
+        theme(
+            axis.text.x = element_text(face = "bold", size = 12),
+            axis.text.y = element_text(face = "bold", size = 12),
+            axis.title.x = element_text(face = "bold", size = 14),
+            axis.title.y = element_text(face = "bold", size = 14),
+            legend.text = element_text(size = 12),
+            legend.title = element_text(face = "bold", size = 12)
+        )
+}
+fc_plot <- generate_cluster_plot(fc_mouse_cluster_long, "Proportion of Clusters Across FC Mice")
+print(fc_plot)
+homecage_plot <- generate_cluster_plot(homecage_mouse_cluster_long, "Proportion of Clusters Across Homecage Mice")
+print(homecage_plot)
+fearonly_plot <- generate_cluster_plot(fearonly_mouse_cluster_long, "Proportion of Clusters Across Fearonly Mice")
+print(fearonly_plot)
 
 
 
