@@ -27,9 +27,9 @@ head(all_para_reads_filt@meta.data)  # View metadata
 Idents(all_para_reads_filt) <- all_para_reads_filt$celltype
 table(Idents(all_para_reads_filt))  # Confirm cell types
 
-#==============================
-#STEP: 2 Isolating Microglia 
-#==============================
+#========
+# STEP: 2 Isolating Microglia 
+#=========
 # This creates a seurat object called microglia, filtering from object all_para_reads_filt 
 microglia <- subset(all_para_reads_filt, celltype == "3_Microglia_Il1a+" | celltype == "4_Microglia_Il1a-")
 #removing cells that belong to a sample (orig.ident) with fewer than 3 cells.
@@ -63,9 +63,9 @@ microglia <- RunPCA(microglia, features = VariableFeatures(object = microglia))
 print(microglia[["pca"]], dims = 1:05, nfeatures = 5) #test different PC's to choose most representative of biological variation
 DimPlot(microglia, reduction = "pca")
 
-#================================================
+#=======
 # STEP 3 CREATE CLUSTERS & DEFINE CLUSTER MARKERS
-#================================================
+#=======
 # findclusters
 microglia <- FindNeighbors(microglia, dims = 1:10)
 microglia<- FindClusters(microglia, resolution = 0.5) #test different resolutions to choose optimal 
@@ -132,9 +132,9 @@ downstream <- microglia.markers %>%
 # Save for downstream GO analysis
 write.csv(downstream, "downstream_genes.csv", row.names = FALSE)
 
-#========================================================================
+#==========
 # STEP 4 : LOOPING IN T5 MICE AND GROUPING MICE BY IDENTITY AND CONDITION
-#=======================================================================
+#==========
 # Add a new column to store experimental conditions
 microglia$condition <- NA  #Initialise
 
@@ -151,40 +151,37 @@ DimPlot(microglia, reduction = "umap", split.by = "condition")
 # Add the 'seurat_clusters' column to the metadata
 microglia$seurat_clusters <- Idents(microglia)
 head(microglia@meta.data)
-#=============================================================
+#=========
 # STEP 5 : Propellor | Cell Abundace Analysis Across Condition
-#=============================================================
+#=========
 # Load required libraries
 library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(multcomp)  # Tukey's HSD test
+library(ggplot2)
+library(dplyr)
+library(tidyr)
 
-# Step 1: Prepare data for propeller analysis
+# Prepare data for propeller analysis
 meta_data <- microglia@meta.data
 meta_data <- meta_data %>% dplyr::select(orig.ident, seurat_clusters, condition)
 colnames(meta_data) <- c("sample_id", "cluster", "condition")
 meta_data$cluster <- as.factor(meta_data$cluster)
 meta_data$condition <- as.factor(meta_data$condition)
 
-# Step 2: Perform propeller analysis
+# Perform propeller analysis
 propeller_results <- propeller(clusters = meta_data$cluster, 
                                sample = meta_data$sample_id, 
                                group = meta_data$condition)
 
-# Load required libraries
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-
-# Step 1: Convert propeller results to long format for visualisation
+# Convert propeller results to long format for visualisation
 prop_data <- data.frame(
   Cluster = rownames(propeller_results), 
   Context = propeller_results$PropMean.Context,
   `Fear Recall` = propeller_results$PropMean.FC,  # Changed "FC" to "Fear Recall"
   Fearonly = propeller_results$PropMean.Fearonly,
-  Homecage = propeller_results$PropMean.Homecage
-)
+  Homecage = propeller_results$PropMean.Homecage)
 
 prop_long <- pivot_longer(prop_data, cols = -Cluster, names_to = "Condition", values_to = "Proportion")
 
@@ -197,7 +194,7 @@ prop_long <- prop_long %>%
 # Convert to percentage for visualization
 prop_long$Percentage <- round(prop_long$Proportion * 100, 1)
 
-# Step 2: Statistical Testing
+# Statistical Testing
 anova_results <- aov(Proportion ~ Condition + Cluster, data = prop_long)
 summary(anova_results)
 
@@ -209,12 +206,11 @@ print(tukey_results)
 kruskal_results <- kruskal.test(Proportion ~ Cluster, data = prop_long)
 print(kruskal_results)
 
-# Organize and print statistical summary table
+# Organise and print statistical summary table
 stat_summary <- data.frame(
   Test = c("ANOVA - Condition", "ANOVA - Cluster", "Kruskal-Wallis - Cluster"),
   p_value = c(1.00000, 0.00167, kruskal_results$p.value),
-  Significant = c("No", ifelse(0.00167 < 0.05, "Yes", "No"), ifelse(kruskal_results$p.value < 0.05, "Yes", "No"))
-)
+  Significant = c("No", ifelse(0.00167 < 0.05, "Yes", "No"), ifelse(kruskal_results$p.value < 0.05, "Yes", "No")))
 print(stat_summary)
 
 # Step 3: Define muted cluster colors based on your request
@@ -323,7 +319,7 @@ ggplot(cell_data, aes(x = Cluster, y = Mean, color = Condition)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
-#Visualisation 
+# Visualisation 
 # Group by mouse, condition, and cluster
 mouse_cluster_counts <- microglia@meta.data %>%
   group_by(mouse, orig.ident, seurat_clusters) %>%
@@ -430,9 +426,9 @@ ggplot(cell_summary_no_context, aes(x = as.factor(Cluster), y = Mean, fill = Con
     legend.text = element_text(size = 12),
     legend.title = element_text(face = "bold", size = 12))
   
-#============================================
+#=======
 # STEP 6 GENE ONTOLOGY ANALYSIS 
-#============================================
+#=======
 #Gene Ontology (GO) enrichment analysis & Gene Set Enrichment Analysis (GSEA) separately for each cluster using the (DEGs) from downstream file.
 #GO Enrichment Analysis (enrichGO) - Identifies enriched Gene Ontology terms.
 #Gene Set Enrichment Analysis (GSEA) (GSEA) - Performs ranking-based pathway analysis.
@@ -475,9 +471,9 @@ for (cl in cluster_list) {
 barplot(go_results_list[["Cluster_3"]], showCategory=10, title="Top GO Terms for Cluster 3")
 dotplot(go_results_list[["Cluster_3"]], showCategory=10, title="GO Dotplot for Cluster 3")
 
-#============================================
+#========
 # STEP 7:  Gene Set Enrichment Analysis 
-#============================================
+#========
 # Load required libraries
 library(clusterProfiler)
 library(org.Mm.eg.db)
@@ -545,12 +541,9 @@ for (cl in unique(microglia.markers$cluster)) {
       pAdjustMethod = "BH",
       pvalueCutoff  = 0.1,
       scoreType = "pos",
-      minGSSize = 5
-    )
-  }, error = function(e) {
+      minGSSize = 5)}, error = function(e) {
     cat(paste0("Error in GSEA for Cluster ", cl, ": ", e$message, "\n"))
-    return(NULL)
-  })
+    return(NULL)})
 
   # Store results
   if (!is.null(gsea_results)) {
@@ -596,7 +589,7 @@ if (length(gsea_results_list) == 0) {
 }
 
 
-#other graphs: library(Seurat)
+# other graphs: library(Seurat)
 library(ggplot2)
 library(RColorBrewer)
 
@@ -622,8 +615,7 @@ ggplot(plot_data, aes(x = PC1, y = PC2, color = Condition)) +
   labs(
     title = "PCA: PC1 vs. PC2 by Condition (Strong Colours)",
     x = "Principal Component 1 (PC1)",
-    y = "Principal Component 2 (PC2)"
-  )
+    y = "Principal Component 2 (PC2)")
 
 
 
