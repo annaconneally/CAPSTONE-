@@ -1,7 +1,7 @@
 
-# =========================================================
+# ======
 # Step 1: Load Required Libraries and Analyse Seurat Object
-# =========================================================
+# ======
 # Set the path to the .robj file
 file_path_all_neuron_reads <- "/Users/annaconneally/Desktop/R_datasets/remote_memory_data/all_neuron_reads.Robj"
 file_path_non_neuronal_cells <- "/Users/annaconneally/Desktop/R_datasets/remote_memory_data/TRAP2_non_neuronal_cells.Robj"
