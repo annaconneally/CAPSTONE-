@@ -155,13 +155,14 @@ head(microglia@meta.data)
 # STEP 5 : Propellor | Cell Abundace Analysis Across Condition
 #=========
 # Load required libraries
-library(ggplot2)
 library(dplyr)
-library(tidyr)
 library(multcomp)  # Tukey's HSD test
 library(ggplot2)
 library(dplyr)
 library(tidyr)
+library(speckle)
+library(tibble)
+library(ggrepel)
 
 # Prepare data for propeller analysis
 meta_data <- microglia@meta.data
@@ -305,19 +306,6 @@ cell_counts <- table(meta_data$cluster, meta_data$condition)
 cell_counts <- as.data.frame(cell_counts)
 colnames(cell_counts) <- c("Cluster", "Condition", "Freq")
 
-# Now, 'Cluster' and 'Condition' columns available for plotting
-ggplot(cell_data, aes(x = Cluster, y = Mean, color = Condition)) +
-  geom_bar(stat = "identity", position = "dodge", width = 0.7) +
-  geom_errorbar(aes(ymin = Mean - SEM, ymax = Mean + SEM), 
-                position = position_dodge(0.7), width = 0.2) + 
-  geom_point(data = cell_counts, 
-             aes(x = Cluster, y = Freq), 
-             color = "black", position = position_jitter(width = 0.2)) +  # corrected jitter positioning
-  labs(title = "Cell Abundance Across Clusters with SEM", x = "Cluster", y = "Cell Count") +
-  theme_minimal() +
-  scale_y_continuous(expand = c(0, 0)) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
 
 # Visualisation 
 # Group by mouse, condition, and cluster
@@ -337,8 +325,7 @@ mouse_cluster_counts <- mouse_cluster_counts %>%
     Condition %in% c("FC", "T1") ~ "FC",
     Condition %in% c("Homecage", "T5") ~ "Homecage",
     Condition %in% c("Fearonly", "T4") ~ "Fearonly",
-    Condition %in% c("T2", "T3", "Context") ~ "Context",
-    TRUE ~ Condition  # Keep other labels unchanged))
+    Condition %in% c("T2", "T3", "Context") ~ "Context")
 cell_summary <- mouse_cluster_counts %>%
   group_by(Cluster, Condition) %>%
   summarise(
@@ -449,7 +436,7 @@ for (cl in cluster_list) {
   cluster_genes <- downstream %>%
     filter(cluster == cl) %>%
     pull(gene)  # Extract gene symbols for the cluster
-  
+}
   gene_ids <- bitr(cluster_genes, fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Mm.eg.db)
   
   go_results <- enrichGO(
@@ -465,12 +452,88 @@ for (cl in cluster_list) {
   
   # Save results for each cluster
   write.csv(as.data.frame(go_results), paste0("GO_Cluster_", cl, ".csv"), row.names=FALSE)
-}
+
 
 #Visualisation - replace for each cluster 
 barplot(go_results_list[["Cluster_3"]], showCategory=10, title="Top GO Terms for Cluster 3")
 dotplot(go_results_list[["Cluster_3"]], showCategory=10, title="GO Dotplot for Cluster 3")
 
+---
+# nicer visuals
+plot_go_barplot <- function(cluster_name, go_results_list, cluster_color) {
+    if (!is.null(go_results_list[[cluster_name]])) {
+        
+        # Convert results to a dataframe
+        go_df <- as.data.frame(go_results_list[[cluster_name]])
+        
+        if (nrow(go_df) > 0) {
+            # Select the top 5 GO terms based on Count (gene count)
+            top_go <- go_df %>%
+                arrange(desc(Count)) %>%
+                head(5)
+            
+            # Generate the barplot
+            p <- ggplot(top_go, aes(x = reorder(Description, Count), y = Count, fill = p.adjust)) +
+                geom_bar(stat = "identity", width = 0.6) +  # Bar width adjusted for clarity
+                geom_text(aes(label = paste0(Count, "/", BgRatio)), 
+                          hjust = 1.2, color = "black", size = 4) +  # Display gene count in pathway
+                coord_flip() +
+                scale_fill_gradient(low = adjustcolor(cluster_color, alpha.f = 0.4), 
+                                    high = adjustcolor(cluster_color, alpha.f = 1)) +  # Muted cluster-specific gradient
+                theme_minimal() +
+                labs(title = paste("Top 5 GO Terms for", cluster_name),
+                     x = "GO Term",
+                     y = "Gene Count",
+                     fill = "Adjusted p-value") +
+                theme(axis.text.y = element_text(face = "bold", size = 12))  # Increase y-axis label size
+            
+            # Save and display the plot
+            ggsave(filename = paste0("GO_Barplot_", cluster_name, ".png"), plot = p, width = 8, height = 6)
+            print(p)  # Display plot in R
+        } else {
+            print(paste("No GO terms found for", cluster_name))
+        }
+    } else {
+        print(paste("Cluster", cluster_name, "does not exist in go_results_list"))
+    }
+}
+go_results_list <- list()
+
+for (cl in cluster_list) {
+    cluster_genes <- downstream %>%
+        filter(cluster == cl) %>%
+        pull(gene)
+
+    # Convert gene symbols to ENTREZ IDs
+    gene_ids <- bitr(cluster_genes, fromType="SYMBOL", toType="ENTREZID", OrgDb=org.Mm.eg.db)
+    
+    # Perform GO enrichment analysis
+    go_results <- enrichGO(
+        gene         = gene_ids$ENTREZID,
+        OrgDb        = org.Mm.eg.db,
+        keyType      = "ENTREZID",
+        ont          = "BP",  # Biological Process
+        pAdjustMethod = "BH",
+        pvalueCutoff  = 0.05,
+        qvalueCutoff  = 0.05
+    )
+    
+    # Store results
+    go_results_list[[paste0("Cluster_", cl)]] <- go_results
+    
+    # Save results to CSV
+    write.csv(as.data.frame(go_results), paste0("GO_Cluster_", cl, ".csv"), row.names=FALSE)
+}
+cluster_colors <- list(
+    "Cluster_0" = "#4A90E2",  # Slightly darker blue
+    "Cluster_1" = "#E67E22",  # Darker orange
+    "Cluster_2" = "#2ECC71",  # Darker green
+    "Cluster_3" = "#9B59B6"   # Darker purple
+)
+plot_go_barplot("Cluster_0", go_results_list, cluster_colors[["Cluster_0"]])
+plot_go_barplot("Cluster_1", go_results_list, cluster_colors[["Cluster_1"]])
+plot_go_barplot("Cluster_2", go_results_list, cluster_colors[["Cluster_2"]])
+plot_go_barplot("Cluster_3", go_results_list, cluster_colors[["Cluster_3"]])
 #========
 # STEP 7:  Gene Set Enrichment Analysis 
 #========
