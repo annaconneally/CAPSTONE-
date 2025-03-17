@@ -792,5 +792,208 @@ print(kruskal_test_FC)
 print(kruskal_test_Fearonly)
 print(kruskal_test_Homecage)
 
+#============================================================================
+# ENGRAM VS NEURON ANALYSIS FOR COMPLEMENT PROTEIN | RAC-1 GTPase INTERACTION
+#Set the path to the .robj file
+file_path_all_neuron_reads <-"/Users/annaconneally/Desktop/R_datasets/remote_memory_data/all_neuron_reads.Robj"
+load(file_path_all_neuron_reads)
+
+#libraries
+library(dplyr)
+library(Seurat)
+library(SeuratData)
+library(SeuratObject)
+library(patchwork)
+library(ggplot2)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("speckle")
+library(speckle)
+
+#check structure
+neurons<-all_neuron_reads
+colnames(neurons@meta.data)
+
+# Add a new column to store experimental conditions
+microglia$condition <- NA  #Initialise
+
+# Assign conditions based on `orig.ident` or other identifiers
+microglia$condition[microglia$orig.ident %in% c("FC", "T1")] <- "FC"
+microglia$condition[microglia$orig.ident %in% c("Homecage", "T5")] <- "Homecage"
+microglia$condition[microglia$orig.ident %in% c("Fearonly", "T4")] <- "Fearonly"
+microglia$condition[microglia$orig.ident %in% c("Context", "T2", "T3")] <- "Context"
+# Run propeller analysis
+propeller_results <- propeller(
+  x = seurat_obj,
+  cluster_col = "celltype",
+  sample_col = "orig.ident",
+  group_col = "condition")
+
+  # Load required libraries
+library(ggplot2)
+library(dplyr)
+library(scales)  # For percentage scales
+
+# Assuming df_counts is your data frame containing the counts and conditions
+
+# Filter out the 'Context' condition and rename 'FC' to 'Fear Recall'
+df_filtered <- df_counts %>%
+  filter(Condition != "Context") %>%
+  mutate(Condition = recode(Condition, "FC" = "Fear Recall"))
+
+# Calculate percentages within each Condition
+df_filtered <- df_filtered %>%
+  group_by(Condition) %>%
+  mutate(Percentage = Count / sum(Count))
+
+# Define muted and slightly darker colors with translucency
+muted_colors <- c("3_Microglia_Il1a+" = alpha("#6A0DAD", 0.7),  # Darker muted purple
+                  "4_Microglia_Il1a-" = alpha("#C71585", 0.7))  # Darker muted pink
+
+# Create the plot for raw counts
+ggplot(df_filtered, aes(x = Condition, y = Percentage, fill = Il1a_Status)) +
+  geom_bar(stat = "identity", position = "fill") +
+  geom_text(aes(label = scales::percent(Percentage, accuracy = 1)),
+            position = position_stack(vjust = 0.5), size = 3, color = "white") +
+  ylab("Percentage (%)") +
+  xlab("Condition") +
+  ggtitle("Distribution of Microglia (Il1a+ vs Il1a-)") +
+  scale_fill_manual(values = muted_colors, 
+                    labels = c("Il1a+", "Il1a-")) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  theme_minimal() +
+  theme(axis.title = element_text(face = "bold"))
+
+  # plot based on propellor results
+  # Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)  # For percentage formatting
+
+# Create a dataframe from propeller_results
+propeller_df <- data.frame(
+  Condition = c("Fear Recall", "Fearonly", "Homecage"),  # Rename FC to Fear Recall
+  Il1a_Pos = c(0.7983631, 0.7378319, 0.6544331),   # Il1a+ proportions
+  Il1a_Neg = c(0.2016369, 0.2621681, 0.3455669)    # Il1a- proportions
+)
+
+# Convert proportions to percentages
+propeller_df <- propeller_df %>%
+  pivot_longer(cols = c(Il1a_Pos, Il1a_Neg), names_to = "Il1a_Status", values_to = "Percentage") %>%
+  mutate(Percentage = Percentage * 100)  # Convert to %
+
+# Rename labels for clarity
+propeller_df$Il1a_Status <- recode(propeller_df$Il1a_Status, 
+                                   "Il1a_Pos" = "Il1a+", 
+                                   "Il1a_Neg" = "Il1a-")
+
+# Define muted colors with transparency
+muted_colors <- c("Il1a+" = alpha("#6A0DAD", 0.7),  # Darker muted purple
+                  "Il1a-" = alpha("#C71585", 0.7))  # Darker muted pink
+
+# Create the plot using propeller proportions
+ggplot(propeller_df, aes(x = Condition, y = Percentage, fill = Il1a_Status)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = paste0(round(Percentage, 1), "%")), 
+            position = position_stack(vjust = 0.5), size = 4, color = "white") +
+  ylab("Percentage (%)") +
+  xlab("Condition") +
+  ggtitle("Distribution of Microglia (Il1a+ vs Il1a-) - Using Propeller Results") +
+  scale_fill_manual(values = muted_colors, labels = c("Il1a+", "Il1a-")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +
+  theme_minimal() +
+  theme(axis.title = element_text(face = "bold"))
+#=========================================
+# ENGRAM VS NON ENGRAM ANAYSIS 
+#=======================================
+# Debugging & Reinitializing an Old Seurat Object
+
+# Step 1: Verify the Structure of `raw.data`
+class(all_neuron_reads@raw.data)  # Check if raw data exists
+dim(all_neuron_reads@raw.data)  # Check dimensions
+colnames(all_neuron_reads@raw.data)[1:10]  # Preview cell names
+rownames(all_neuron_reads@raw.data)[1:10]  # Preview gene names
+
+# Step 2: Convert `raw.data` into a Proper Counts Matrix
+if (is.null(dim(all_neuron_reads@raw.data))) {
+    counts_data <- as.matrix(as.data.frame(all_neuron_reads@raw.data))
+} else {
+    counts_data <- as.matrix(all_neuron_reads@raw.data)
+}
+
+# Step 3: Extract and Verify Metadata
+metadata <- all_neuron_reads@meta.data
+print(dim(metadata))  # Check if metadata has rows (samples)
+
+# Step 4: Ensure Metadata and Counts Match
+counts_cells <- colnames(counts_data)
+metadata_cells <- rownames(metadata)
+
+# Find the intersection of shared cell names
+overlapping_cells <- intersect(counts_cells, metadata_cells)
+
+# Filter both datasets to only include overlapping cells
+counts_data <- counts_data[, overlapping_cells]
+metadata <- metadata[overlapping_cells, ]
+
+# Step 5: Recreate the Seurat Object
+all_neuron_reads <- CreateSeuratObject(counts = counts_data, meta.data = metadata)
+
+# Verify the Seurat object
+print(all_neuron_reads)
+slotNames(all_neuron_reads)
+colnames(all_neuron_reads@meta.data)
+
+# Step 6: Check `pos_neg` and Subset
+table(all_neuron_reads@meta.data$pos_neg)
+
+# Subset for positive (tdT+) and negative neuronal cells
+pos_neurons <- subset(all_neuron_reads, subset = pos_neg == "pos")
+neg_neurons <- subset(all_neuron_reads, subset = pos_neg == "neg")
+
+# Verify subset
+table(pos_neurons@meta.data$pos_neg)
+
+# Step 1: Normalise
+all_neuron_reads <- NormalizeData(all_neuron_reads, normalization.method = "LogNormalize", scale.factor = 10000)
+
+# Step 2: Identify Variable Features
+all_neuron_reads <- FindVariableFeatures(all_neuron_reads, selection.method = "vst", nfeatures = 2000)
+
+# Step 3: Scale 
+all_neuron_reads <- ScaleData(all_neuron_reads, features = rownames(all_neuron_reads))
+
+# Step 4: Set Identity Class Based on Engram vs. Non-Engram
+Idents(all_neuron_reads) <- all_neuron_reads$pos_neg  # Ensure column exists in metadata
+
+# Step 5: Perform Differential Gene Expression Analysis
+deg_results <- FindMarkers(
+  all_neuron_reads,
+  ident.1 = "pos",  # Engram cells
+  ident.2 = "neg",  # Non-engram cells
+  min.pct = 0.1,    # Minimum expression threshold
+  logfc.threshold = 0.25, # Fold-change cutoff
+  test.use = "wilcox"  # Wilcoxon Rank Sum Test
+)
+
+# Step 6: Add Gene Names to Results
+deg_results$Gene <- rownames(deg_results)
+
+# Step 7: Filter Significant DEGs (Adjusted p-value < 0.05)
+significant_deg <- deg_results %>%
+  filter(p_val_adj < 0.05) %>%
+  arrange(desc(avg_log2FC))  # Sort by fold change
+
+# Step 8: Save DEG Results
+write.csv(significant_deg, "Engram_DEGs.csv", row.names = FALSE)
+
+# Step 9: DEG Results (Volcano Plot)
+ggplot(significant_deg, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point(aes(color = avg_log2FC > 0), alpha = 0.8) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Volcano Plot of Engram vs. Non-Engram DEGs", x = "Log2 Fold Change", y = "-Log10 Adjusted P-value") +
+  theme_minimal()
+
 
 
