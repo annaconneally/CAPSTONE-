@@ -528,8 +528,7 @@ cluster_colors <- list(
     "Cluster_0" = "#4A90E2",  # Slightly darker blue
     "Cluster_1" = "#E67E22",  # Darker orange
     "Cluster_2" = "#2ECC71",  # Darker green
-    "Cluster_3" = "#9B59B6"   # Darker purple
-)
+    "Cluster_3" = "#9B59B6"   # Darker purple)
 plot_go_barplot("Cluster_0", go_results_list, cluster_colors[["Cluster_0"]])
 plot_go_barplot("Cluster_1", go_results_list, cluster_colors[["Cluster_1"]])
 plot_go_barplot("Cluster_2", go_results_list, cluster_colors[["Cluster_2"]])
@@ -715,7 +714,7 @@ compute_percentages <- function(data) {
         mutate(Percentage = round((Cell_Count / sum(Cell_Count)) * 100, 1))
 }
 
-# Compute percentages for each condition
+# Compute % for each condition
 fc_mouse_cluster_long <- compute_percentages(fc_mouse_cluster_long)
 homecage_mouse_cluster_long <- compute_percentages(homecage_mouse_cluster_long)
 fearonly_mouse_cluster_long <- compute_percentages(fearonly_mouse_cluster_long)
@@ -742,8 +741,7 @@ generate_cluster_plot <- function(data, title) {
             axis.title.x = element_text(face = "bold", size = 14),
             axis.title.y = element_text(face = "bold", size = 14),
             legend.text = element_text(size = 12),
-            legend.title = element_text(face = "bold", size = 12)
-        )
+            legend.title = element_text(face = "bold", size = 12))
 }
 fc_plot <- generate_cluster_plot(fc_mouse_cluster_long, "Proportion of Clusters Across FC Mice")
 print(fc_plot)
@@ -903,10 +901,10 @@ ggplot(propeller_df, aes(x = Condition, y = Percentage, fill = Il1a_Status)) +
   scale_fill_manual(values = muted_colors, labels = c("Il1a+", "Il1a-")) +
   scale_y_continuous(labels = scales::percent_format(scale = 1)) +
   theme_minimal() +
-  theme(axis.title = element_text(face = "bold"))
-#=========================================
+  theme(axis.title = element_texface = "bold"))
+#===============================
 # ENGRAM VS NON ENGRAM ANAYSIS 
-#=======================================
+#==============================
 # Debugging & Reinitializing an Old Seurat Object
 
 # Step 1: Verify the Structure of `raw.data`
@@ -974,8 +972,7 @@ deg_results <- FindMarkers(
   ident.2 = "neg",  # Non-engram cells
   min.pct = 0.1,    # Minimum expression threshold
   logfc.threshold = 0.25, # Fold-change cutoff
-  test.use = "wilcox"  # Wilcoxon Rank Sum Test
-)
+  test.use = "wilcox"  # Wilcoxon Rank Sum Test)
 
 # Step 6: Add Gene Names to Results
 deg_results$Gene <- rownames(deg_results)
@@ -994,6 +991,41 @@ ggplot(significant_deg, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
   scale_color_manual(values = c("blue", "red")) +
   labs(title = "Volcano Plot of Engram vs. Non-Engram DEGs", x = "Log2 Fold Change", y = "-Log10 Adjusted P-value") +
   theme_minimal()
+
+#=======================================================
+# Analysisng Aberrant Gene Expression within the Dataset 
+#=======================================================
+exAM_genes <- c("Fos", "Jun", "Junb", "Socs3", "Egr1", "Btg2", 
+                "Nfkbid", "Nfkbiz", "Zfp36", "Atf3", "Dusp1", 
+                "Hspa1a", "Hspa1b", "Hspa1d", "Ier5", "1500015O10Rik", 
+                "Arc", "Nr4a1", "Hnrnpa2b1", "Hnrnph1", "Hnrnph3") # these genes are taken from Marsh et al 2022
+
+homeostatic_genes <- c("P2ry12", "Cx3cr1", "Tmem119", "Fcrls", 
+                      "Trem2", "Csf1r", "Fcrls", "Fcrl1", 
+                      "Olfml3", "Aif1", "Lag3")  # these genes are taken from Marsh et al 2022
+# Extract gene expression data
+exAM_data <- FetchData(microglia, vars = exAM_genes)
+homeostatic_data <- FetchData(microglia, vars = homeostatic_genes)
+# Compute median or mean expression for plotting
+exAM_summary <- colMeans(exAM_data)
+homeo_summary <- colMeans(homeostatic_data)
+# Violin plot for exAM genes
+VlnPlot(microglia, features = exAM_genes, pt.size = 0) + theme_minimal()
+# Violin plot for homeostatic genes
+VlnPlot(microglia, features = homeostatic_genes, pt.size = 0) + theme_minimal()
+microglia <- AddModuleScore(microglia, features = list(exAM_genes), name = "exAM_Score")
+microglia <- AddModuleScore(microglia, features = list(homeostatic_genes), name = "Homeo_Score")
+# score
+FeaturePlot(microglia, features = c("exAM_Score1", "Homeo_Score1"))
+# Example for exAM genes
+for (gene in exAM_genes) {
+  microglia[[paste0(gene, "_LFC")]] <- log2(FetchData(microglia, vars = gene) + 1) - median(log2(FetchData(microglia, vars = gene) + 1))
+}
+# one gene's deviation on UMAP
+FeaturePlot(microglia, features = "Fos_LFC", cols = c("blue", "grey", "red"))
+
+# end 
+
 
 
 
